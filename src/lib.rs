@@ -1,5 +1,7 @@
-//! Simpler and denser than MNIST, a dense file is binary file of seqeuantial training examples and nothing else (example->label->example->label->etc.).
-//! 
+//! An encoder/decoder to/from dense files.
+//!
+//! A file format simpler and denser than MNIST, a dense file is binary file of seqeuantial training examples and nothing else (example->label->example->label->etc.).
+//!
 //! Example labels and datapoints within examples can be stored using from 1 to 8 bytes (`label_bytes` and `data_bytes` respectively).
 use std::{
     fs::File,
@@ -8,7 +10,7 @@ use std::{
 
 /// Reads from dense file.
 ///
-/// Returns (data,labels)
+/// Returns (data,labels).
 /// ```
 /// use ndarray::{Array2,array};
 ///
@@ -78,7 +80,7 @@ pub fn read(
         usize::from_le_bytes(bytes)
     }
 }
-/// Write to dense file.
+/// Writes to dense file.
 ///
 /// ```
 /// use ndarray::{Array2,array};
