@@ -7,6 +7,17 @@
 
 An encoder/decoder to/from dense files.
 
+```rust
+use ndarray::{Array2,array};
+
+let data: Array2<usize> = array![[0, 0], [1, 0], [0, 1], [1, 1]];
+let labels: Array2<usize> = array![[0], [1], [1], [0]];
+
+dense::write("dense_reader",1,1,&data,&labels);
+
+let (read_data,read_labels) = dense::read("dense_reader",2,1,1);
+```
+
 A file format simpler and denser than MNIST, a dense file is binary file of seqeuantial training examples and nothing else (example->label->example->label->etc.).
 
 Format | Size | Size on disk
