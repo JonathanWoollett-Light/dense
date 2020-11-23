@@ -18,4 +18,4 @@ catagories= ["science","encoding","compression"]
 
 [dependencies]
 ndarray = "0.13.1"
-mnist_read = "1.0.0"
+mnist_read = "1.0.1"
