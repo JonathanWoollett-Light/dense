@@ -1,10 +1,10 @@
 [package]
 name = "dense"
-version = "1.0.1"
+version = "1.0.2"
 authors = ["Jonathan Woollett-Light <jonathanwoollettlight@gmai.com>"]
 edition = "2018"
 
-description = "Reads generic data and label files in the MNIST file format."
+description = "An encoder/decoder to/from dense files."
 license = "Apache-2.0"
 exclude = ["tests"]
 
