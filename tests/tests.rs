@@ -25,7 +25,7 @@ mod tests {
         let metadata =
             std::fs::metadata("dense_mnist").expect("Couldn't get meta data on dense file.");
         // Checks size
-        assert_eq!(metadata.len() as usize, ((28*28)+1)*MNIST_TEST);
+        assert_eq!(metadata.len() as usize, ((28 * 28) + 1) * MNIST_TEST);
 
         // Reads dense
         let (new_data, new_labels) = dense::read("dense_mnist", 28 * 28, 1, 1);
