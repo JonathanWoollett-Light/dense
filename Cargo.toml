@@ -1,6 +1,6 @@
 [package]
 name = "dense"
-version = "1.0.2"
+version = "1.1.0"
 authors = ["Jonathan Woollett-Light <jonathanwoollettlight@gmai.com>"]
 edition = "2018"
 
