@@ -1,12 +1,14 @@
 //! An encoder/decoder to/from dense files.
 //!
-//! A file format simpler and denser than MNIST, a dense file is binary file of seqeuantial training examples and nothing else (example->label->example->label->etc.).
-//!
-//! Example labels and datapoints within examples can be stored using from 1 to 8 bytes (`label_bytes` and `data_bytes` respectively).
+//! A file format simpler and denser than MNIST, a dense file is binary file of sequential training examples and nothing else (example->label->example->label->etc.).
+
 use std::{
     fs::File,
-    io::{Read, Write},
+    io::{Read, Write,BufWriter},
+    mem,
 };
+use num_bytes::{IntoBytes,TryFromBytes};
+use ndarray::{Axis,Array2};
 
 /// Reads from dense file.
 ///
@@ -14,125 +16,95 @@ use std::{
 /// ```
 /// use ndarray::{Array2,array};
 ///
-/// let data: Array2<usize> = array![[0, 0], [1, 0], [0, 1], [1, 1]];
-/// let labels: Array2<usize> = array![[0], [1], [1], [0]];
+/// let data: Array2<u8> = array![[0, 0], [1, 0], [0, 1], [1, 1]];
+/// let labels: Array2<u16> = array![[0], [1], [1], [0]];
 ///
-/// dense::write("dense_reader",1,1,&data,&labels);
+/// dense::write("dense_reader",&data,&labels).unwrap();
 ///
-/// let (read_data,read_labels) = dense::read("dense_reader",2,1,1);
+/// let (read_data,read_labels) = dense::read::<u8,u16>("dense_reader",2).unwrap();
 ///
 /// assert_eq!(read_data,data);
 /// assert_eq!(read_labels,labels);
 ///
-/// # std::fs::remove_file("dense_reader");
+/// # std::fs::remove_file("dense_reader").unwrap();
 /// ```
-pub fn read(
+pub fn read<T:TryFromBytes,P:TryFromBytes>(
     path: &str,          // Path to file
-    example_size: usize, // Number of data points in example (e.g. pixels)
-    data_bytes: usize,   // Number of bytes in data point
-    label_bytes: usize,  // Number of bytes in label
-) -> (ndarray::Array2<usize>, ndarray::Array2<usize>) {
-    // Check sizes
-    if data_bytes == 0 || data_bytes > 8 {
-        panic!("All data points become `usize`s. `data_bytes` must be >=1 and <=8");
-    }
-    if label_bytes == 0 || label_bytes > 8 {
-        panic!("All labels become `usize`s. `label_bytes` must be >=1 and <=8");
-    }
+    example_size: usize, // Number of data points in each example (e.g. pixels in each image)
+) -> Result<(Array2<T>, Array2<P>), Box<dyn std::error::Error>> {
+
     // Read file
-    let mut file = File::open(path).unwrap();
+    let mut file = File::open(path)?;
     let mut buffer: Vec<u8> = Vec::new();
-    file.read_to_end(&mut buffer)
-        .expect("Failed dense file read.");
-    // Set sizes
-    let example_bytes: usize = (example_size * data_bytes) + label_bytes;
-    let examples = buffer.len() / example_bytes;
-    // Allocate storage
-    let mut labels: Vec<usize> = vec![usize::default(); examples];
-    let mut data: Vec<Vec<usize>> = vec![vec![usize::default(); example_size]; examples];
-    // Set data
-    for (indx, example) in buffer.chunks_exact(example_bytes).enumerate() {
-        labels[indx] = u8s_to_usize(&example[example_size..]);
-        data[indx] = example[0..example.len() - label_bytes]
-            .chunks_exact(data_bytes)
-            .map(|chunk| u8s_to_usize(chunk))
-            .collect();
-    }
+    file.read_to_end(&mut buffer)?;
 
-    return (
-        ndarray::Array::from_shape_vec(
-            (examples, example_size),
-            data.into_iter().flatten().collect(),
-        )
-        .expect("Read dense data shape wrong (this should be impossible)."),
-        ndarray::Array::from_shape_vec((examples, 1), labels)
-            .expect("Read dense label shape wrong (this should be impossible)."),
-    );
+    let label_size = mem::size_of::<P>();
+    let point_data_size = mem::size_of::<T>();
+    let data_size = point_data_size * example_size;
+    let sample_size = data_size+label_size;
+    assert_eq!(buffer.len() % sample_size, 0);
+    let length = buffer.len() / sample_size;
 
-    // Casts `&[u8]` to `usize`.
-    // big endian: 1st `u8` is smallest component.
-    fn u8s_to_usize(given_bytes: &[u8]) -> usize {
-        let mut bytes: [u8; 8] = [0; 8];
-        // `.rev()` since 1st byte is smallest (and thus last byte in usize) and last byte is largest (and thus 1st byte is usize)
-        for (indx, byte) in given_bytes.iter().rev().enumerate() {
-            bytes[indx] = *byte;
-        }
-        usize::from_le_bytes(bytes)
-    }
+    let (data,labels): (Vec<Result<Vec<T>,_>>,Vec<Result<P,_>>) =  buffer.chunks_exact(sample_size).map(|chunk| {
+        let temp_data: Result<Vec<T>,_> = chunk[0..data_size].chunks_exact(mem::size_of::<T>()).map(|c|{
+            T::try_from_le_bytes(c)
+        }).collect();
+        debug_assert!(temp_data.is_ok());
+
+        let label = P::try_from_le_bytes(&chunk[data_size..]);
+        debug_assert!(label.is_ok());
+        (temp_data,label)
+    }).unzip();
+    let clean_data: Vec<Vec<T>> = data.into_iter().collect::<Result<Vec<Vec<T>>,_>>()?;
+    let clean_labels: Vec<P> = labels.into_iter().collect::<Result<Vec<P>,_>>()?;
+
+    let flat_data: Vec<T> = clean_data.into_iter().flatten().collect();
+
+    return Ok((
+        ndarray::Array::from_shape_vec((length, example_size),flat_data)?,
+        ndarray::Array::from_shape_vec((length, 1), clean_labels)?,
+    ));
 }
 /// Writes to dense file.
 ///
 /// ```
 /// use ndarray::{Array2,array};
 ///
-/// let data: Array2<usize> = array![[0, 0], [1, 0], [0, 1], [1, 1]];
-/// let labels: Array2<usize> = array![[0], [1], [1], [0]];
+/// let data: Array2<u8> = array![[0, 0], [1, 0], [0, 1], [1, 1]];
+/// let labels: Array2<u16> = array![[0], [1], [1], [0]];
 ///
-/// dense::write("dense_writer",1,1,&data,&labels);
+/// dense::write("dense_writer",&data,&labels).unwrap();
 ///
-/// let (read_data,read_labels) = dense::read("dense_writer",2,1,1);
+/// let (read_data,read_labels) = dense::read::<u8,u16>("dense_writer",2).unwrap();
 ///
 /// assert_eq!(read_data,data);
 /// assert_eq!(read_labels,labels);
 ///
-/// # std::fs::remove_file("dense_writer");
+/// # std::fs::remove_file("dense_writer").unwrap();
 /// ```
-pub fn write(
+pub fn write<T: IntoBytes + Copy, P: IntoBytes + Copy>(
     path: &str,                      // Path to file
-    data_bytes: usize,               // Number of bytes in data point
-    label_bytes: usize,              // Number of bytes in label
-    data: &ndarray::Array2<usize>,   // Data
-    labels: &ndarray::Array2<usize>, // Labels
-) {
-    let mut file = File::create(path).expect("Failed to create file.");
-    for (example_data, example_label) in data
-        .axis_iter(ndarray::Axis(0))
-        .zip(labels.axis_iter(ndarray::Axis(0)))
-    {
-        file.write_all(
-            &example_data
-                .as_slice()
-                .expect("Failed to convert write dense data to slice.")
-                .into_iter()
-                .flat_map(|x| usize_to_u8s(*x, data_bytes))
-                .collect::<Vec<u8>>(),
-        )
-        .expect("Failed dense data write.");
-        file.write_all(
-            &example_label
-                .as_slice()
-                .expect("Fail to convert write dense labels to slice.")
-                .into_iter()
-                .flat_map(|x| usize_to_u8s(*x, label_bytes))
-                .collect::<Vec<u8>>(),
-        )
-        .expect("Failed dense label write.");
+    data: &Array2<T>,   // Data
+    labels: &Array2<P>, // Labels
+) -> Result<(),Box<dyn std::error::Error>> {
+    assert_eq!(data.len_of(Axis(0)), data.len_of(Axis(0)));
+
+    let file = File::create(path)?;
+    let mut writer = BufWriter::new(file);
+
+    for (data_ndarray, label_ndarray) in data
+        .axis_iter(Axis(0))
+        .zip(labels.axis_iter(Axis(0)))
+    { 
+        let data_slice: &[T] = data_ndarray.as_slice().unwrap();
+        let data_bytes: Vec<u8> = data_slice.iter().flat_map(|t|t.into_le_bytes()).collect();
+
+        assert_eq!(label_ndarray.len(),1);
+        let label: P = label_ndarray[0];
+        let label_bytes = label.into_le_bytes();
+
+        writer.write_all(&data_bytes)?;
+        writer.write_all(&label_bytes)?;
     }
-    // Casts `usize` to `[u8:8]`.
-    // big endian: 1st `u8` is smallest component.
-    fn usize_to_u8s(value: usize, bytes: usize) -> Vec<u8> {
-        let mut data_bytes: [u8; 8] = value.to_le_bytes();
-        data_bytes.reverse(); // flip from little endian to big endian
-        return data_bytes[8 - bytes..8].to_vec(); // returns required slice size
-    }
+    Ok(())
 }

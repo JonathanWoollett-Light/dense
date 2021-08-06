@@ -1,6 +1,6 @@
 [package]
 name = "dense"
-version = "1.1.0"
+version = "2.0.0"
 authors = ["Jonathan Woollett-Light <jonathanwoollettlight@gmai.com>"]
 edition = "2018"
 
@@ -17,5 +17,9 @@ catagories= ["science","encoding","compression"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ndarray = "0.14.0"
+ndarray = "0.15.3"
+num = "0.4.0"
+num-bytes = "0.3.0"
+
+[dev-dependencies]
 mnist_read = "1.0.1"

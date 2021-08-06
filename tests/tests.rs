@@ -1,40 +1,40 @@
 #[cfg(test)]
 mod tests {
+    // Length of MNIST test data set
     const MNIST_TEST: usize = 10000;
+    // Size of examples in MNIST
+    const MNIST_SIZE: usize = 28*28;
     #[test]
     fn mnist() {
         // Reads MNIST
         let training_labels = mnist_read::read_labels("tests/mnist/t10k-labels.idx1-ubyte");
         let training_data = mnist_read::read_data("tests/mnist/t10k-images.idx3-ubyte");
 
-        // Castes to ndarray's
-        let usize_labels: Vec<usize> = training_labels.into_iter().map(|l| l as usize).collect();
-        let labels: ndarray::Array2<usize> =
-            ndarray::Array::from_shape_vec((MNIST_TEST, 1), usize_labels).expect("Bad labels");
-        let old_labels_shape = labels.shape();
-
-        let usize_data: Vec<usize> = training_data.into_iter().map(|d| d as usize).collect();
-        let data: ndarray::Array2<usize> =
-            ndarray::Array::from_shape_vec((MNIST_TEST, 28 * 28), usize_data).expect("Bad data");
-        let old_data_shape = data.shape();
+        // Castes to `ndarray`s
+        let labels = ndarray::Array::from_shape_vec((MNIST_TEST, 1), training_labels).unwrap();
+        let data = ndarray::Array::from_shape_vec((MNIST_TEST, MNIST_SIZE), training_data).unwrap();
 
         // Writes dense
-        dense::write("dense_mnist", 1, 1, &data, &labels);
+        dense::write("dense_mnist", &data, &labels).unwrap();
 
         // Reads metadata
         let metadata =
-            std::fs::metadata("dense_mnist").expect("Couldn't get meta data on dense file.");
+            std::fs::metadata("dense_mnist").unwrap();
         // Checks size
-        assert_eq!(metadata.len() as usize, ((28 * 28) + 1) * MNIST_TEST);
+        assert_eq!(metadata.len() as usize, (MNIST_SIZE + 1) * MNIST_TEST);
 
         // Reads dense
-        let (new_data, new_labels) = dense::read("dense_mnist", 28 * 28, 1, 1);
+        let (new_data, new_labels) = dense::read::<u8,u8>("dense_mnist", MNIST_SIZE).unwrap();
 
         // Checks correct sizes
-        assert_eq!(new_labels.shape(), old_labels_shape);
-        assert_eq!(new_data.shape(), old_data_shape);
+        assert_eq!(new_labels.shape(), labels.shape());
+        assert_eq!(new_data.shape(), data.shape());
 
-        // Removes files
-        std::fs::remove_file("dense_mnist").expect("Couldn't remove dense file");
+        // Checks all data
+        assert_eq!(new_data,data);
+        assert_eq!(new_labels,labels);
+
+        // Removes file
+        std::fs::remove_file("dense_mnist").unwrap();
     }
 }
